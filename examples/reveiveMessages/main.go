@@ -19,12 +19,12 @@ func (*waHandler) HandleError(err error) {
 }
 
 func (*waHandler) HandleLocationMessage(message whatsapp.LocationMessage) {
-	fmt.Printf("%v %v\n\t%v\n", message.Info.Timestamp, message.Info.RemoteJid, message.DegreesLatitude)
+	fmt.Printf("%v \t%v %v\n\t%v\n", message.Info.Id, message.Info.Timestamp, message.Info.RemoteJid, message.Text)
 }
 
 //Optional to be implemented. Implement HandleXXXMessage for the types you need.
 func (*waHandler) HandleTextMessage(message whatsapp.TextMessage) {
-	fmt.Printf("%v %v\n\t%v\n", message.Info.Timestamp, message.Info.RemoteJid, message.Text)
+	fmt.Printf("%v \t%v %v\n\t%v\n", message.Info.Id, message.Info.Timestamp, message.Info.RemoteJid, message.Text)
 }
 
 //Example for media handling. Video, Audio, Document are also possible in the same way
