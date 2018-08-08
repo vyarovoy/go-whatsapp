@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
-	"github.com/Baozisoftware/qrcode-terminal-go"
-	"github.com/Rhymen/go-whatsapp"
 	"os"
 	"time"
+
+	"github.com/Baozisoftware/qrcode-terminal-go"
+	"github.com/vyarovoy/go-whatsapp"
 )
 
 func main() {
@@ -25,11 +26,17 @@ func main() {
 
 	<-time.After(3 * time.Second)
 
-	msg := whatsapp.TextMessage{
-		Info: whatsapp.MessageInfo{
-			RemoteJid: "number@s.whatsapp.net",
-		},
-		Text: "Message sent by github.com/Rhymen/go-whatsapp",
+	// msg := whatsapp.TextMessage{
+	// 	Info: whatsapp.MessageInfo{
+	// 		RemoteJid: "number@s.whatsapp.net",
+	// 	},
+	// 	Text: "Message sent by github.com/Rhymen/go-whatsapp",
+	// }
+	msg := whatsapp.LocationMessage{Info: whatsapp.MessageInfo{
+		RemoteJid: "number@s.whatsapp.net",
+	},
+		DegreesLatitude:  50.35,
+		DegreesLongitude: 30.42,
 	}
 
 	err = wac.Send(msg)

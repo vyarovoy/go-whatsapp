@@ -18,6 +18,10 @@ func (*waHandler) HandleError(err error) {
 	fmt.Fprintf(os.Stderr, "error occoured: %v", err)
 }
 
+func (*waHandler) HandleLocationMessage(message whatsapp.LocationMessage) {
+	fmt.Printf("%v %v\n\t%v\n", message.Info.Timestamp, message.Info.RemoteJid, message.DegreesLatitude)
+}
+
 //Optional to be implemented. Implement HandleXXXMessage for the types you need.
 func (*waHandler) HandleTextMessage(message whatsapp.TextMessage) {
 	fmt.Printf("%v %v\n\t%v\n", message.Info.Timestamp, message.Info.RemoteJid, message.Text)
