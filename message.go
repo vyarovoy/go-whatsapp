@@ -440,6 +440,9 @@ func parseProtoMessage(msg *proto.WebMessageInfo) interface{} {
 	case msg.GetMessage().GetConversation() != "":
 		return getTextMessage(msg)
 
+	case msg.GetMessage().GetLocationMessage() != nil:
+		return getLocationMessage(msg)
+
 	default:
 		//cannot match message
 	}
