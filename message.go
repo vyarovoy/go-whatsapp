@@ -4,13 +4,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/Rhymen/go-whatsapp/binary"
-	"github.com/Rhymen/go-whatsapp/binary/proto"
 	"io"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Rhymen/go-whatsapp/binary"
+	"github.com/Rhymen/go-whatsapp/binary/proto"
 )
 
 type messageType string
@@ -20,6 +21,7 @@ const (
 	video    messageType = "WhatsApp Video Keys"
 	audio    messageType = "WhatsApp Audio Keys"
 	document messageType = "WhatsApp Document Keys"
+	location messageType = "WhatsApp Location Keys"
 )
 
 func (wac *Conn) Send(msg interface{}) error {
@@ -134,6 +136,40 @@ func getInfoProto(info *MessageInfo) *proto.WebMessageInfo {
 		MessageTimestamp: &info.Timestamp,
 		Status:           &status,
 	}
+}
+
+/*
+LocationMessage represents a location sharing message.
+*/
+type LocationMessage struct {
+	Info             MessageInfo
+	DegreesLatitude  float64
+	DegreesLongitude float64
+	Url              string
+	Address          string
+}
+
+func getLocationMessage(msg *proto.WebMessageInfo) LocationMessage {
+	return LocationMessage{
+		Info:             getMessageInfo(msg),
+		DegreesLatitude:  msg.GetMessage().LocationMessage.GetDegreesLatitude(),
+		DegreesLongitude: msg.GetMessage().LocationMessage.GetDegreesLongitude(),
+		Url:              msg.GetMessage().LocationMessage.GetUrl(),
+		Address:          msg.GetMessage().LocationMessage.GetAddress(),
+	}
+}
+
+func getLocationProto(msg LocationMessage) *proto.WebMessageInfo {
+	p := getInfoProto(&msg.Info)
+	p.Message = &proto.Message{
+		LocationMessage: &proto.LocationMessage{
+			DegreesLatitude:  &msg.DegreesLatitude,
+			DegreesLongitude: &msg.DegreesLongitude,
+			Url:              &msg.Url,
+			Address:          &msg.Address,
+		},
+	}
+	return p
 }
 
 /*

@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/gob"
 	"fmt"
-	"github.com/Baozisoftware/qrcode-terminal-go"
-	"github.com/Rhymen/go-whatsapp"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Baozisoftware/qrcode-terminal-go"
+	"github.com/vyarovoy/go-whatsapp"
 )
 
 type waHandler struct{}

@@ -2,9 +2,10 @@ package whatsapp
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/Rhymen/go-whatsapp/binary"
 	"github.com/Rhymen/go-whatsapp/binary/proto"
-	"os"
 )
 
 /*
@@ -16,6 +17,14 @@ dispatched through this handler. They are returned as an error on the specific f
 */
 type Handler interface {
 	HandleError(err error)
+}
+
+/*
+The LocationMessageHandler interface needs to be implemented to receive location share messages dispatched by the dispatcher.
+*/
+type LocationMessageHandler interface {
+	Handler
+	HandleLocationMessage(message LocationMessage)
 }
 
 /*
@@ -92,6 +101,14 @@ func (wac *Conn) handle(message interface{}) {
 				continue
 			}
 			go x.HandleJsonMessage(m)
+		}
+	case LocationMessage:
+		for _, h := range wac.handler {
+			x, ok := h.(LocationMessageHandler)
+			if !ok {
+				continue
+			}
+			go x.HandleLocationMessage(m)
 		}
 	case TextMessage:
 		for _, h := range wac.handler {
