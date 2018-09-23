@@ -29,6 +29,73 @@ type Session struct {
 	Wid         string
 }
 
+type Info struct {
+	Battery   int
+	Platform  string
+	Connected bool
+	Pushname  string
+	Wid       string
+	Lc        string
+	Phone     *PhoneInfo
+	Plugged   bool
+	Tos       int
+	Lg        string
+	Is24h     bool
+}
+
+type PhoneInfo struct {
+	Mcc                string
+	Mnc                string
+	OsVersion          string
+	DeviceManufacturer string
+	DeviceModel        string
+	OsBuildNumber      string
+	WaVersion          string
+}
+
+func newInfoFromReq(info map[string]interface{}) *Info {
+	phoneInfo := info["phone"].(map[string]interface{})
+
+	ret := &Info{
+		Battery:   int(info["battery"].(float64)),
+		Platform:  info["platform"].(string),
+		Connected: info["connected"].(bool),
+		Pushname:  info["pushname"].(string),
+		Wid:       info["wid"].(string),
+		Lc:        info["lc"].(string),
+		Phone: &PhoneInfo{
+			phoneInfo["mcc"].(string),
+			phoneInfo["mnc"].(string),
+			phoneInfo["os_version"].(string),
+			phoneInfo["device_manufacturer"].(string),
+			phoneInfo["device_model"].(string),
+			phoneInfo["os_build_number"].(string),
+			phoneInfo["wa_version"].(string),
+		},
+		Plugged: info["plugged"].(bool),
+		Lg:      info["lg"].(string),
+		Tos:     int(info["tos"].(float64)),
+	}
+
+	if is24h, ok := info["is24h"]; ok {
+		ret.Is24h = is24h.(bool)
+	}
+
+	return ret
+}
+
+/*
+SetClientName sets the long and short client names that are sent to WhatsApp when logging in and displayed in the
+WhatsApp Web device list. As the values are only sent when logging in, changing them after logging in is not possible.
+*/
+func (wac *Conn) SetClientName(long, short string) error {
+	if wac.session != nil && (wac.session.EncKey != nil || wac.session.MacKey != nil) {
+		return fmt.Errorf("cannot change client name after logging in")
+	}
+	wac.longClientName, wac.shortClientName = long, short
+	return nil
+}
+
 /*
 Login is the function that creates a new whatsapp session and logs you in. If you do not want to scan the qr code
 every time, you should save the returned session and use RestoreSession the next time. Login takes a writable channel
@@ -67,7 +134,7 @@ func (wac *Conn) Login(qrChan chan<- string) (Session, error) {
 
 	session.ClientId = base64.StdEncoding.EncodeToString(clientId)
 	//oldVersion=8691
-	login := []interface{}{"admin", "init", []int{0, 3, 225}, []string{"github.com/rhymen/go-whatsapp", "go-whatsapp"}, session.ClientId, true}
+	login := []interface{}{"admin", "init", []int{0, 3, 225}, []string{wac.longClientName, wac.shortClientName}, session.ClientId, true}
 	loginChan, err := wac.write(login)
 	if err != nil {
 		return session, fmt.Errorf("error writing login: %v\n", err)
@@ -107,10 +174,15 @@ func (wac *Conn) Login(qrChan chan<- string) (Session, error) {
 	case <-time.After(time.Duration(resp["ttl"].(float64)) * time.Millisecond):
 		return session, fmt.Errorf("qr code scan timed out")
 	}
-	session.ClientToken = resp2[1].(map[string]interface{})["clientToken"].(string)
-	session.ServerToken = resp2[1].(map[string]interface{})["serverToken"].(string)
-	session.Wid = resp2[1].(map[string]interface{})["wid"].(string)
-	s := resp2[1].(map[string]interface{})["secret"].(string)
+
+	info := resp2[1].(map[string]interface{})
+
+	wac.Info = newInfoFromReq(info)
+
+	session.ClientToken = info["clientToken"].(string)
+	session.ServerToken = info["serverToken"].(string)
+	session.Wid = info["wid"].(string)
+	s := info["secret"].(string)
 	decodedSecret, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return session, fmt.Errorf("error decoding secret: %v", err)
@@ -175,7 +247,7 @@ func (wac *Conn) RestoreSession(session Session) (Session, error) {
 	wac.listener["s1"] = make(chan string, 1)
 
 	//admin init
-	init := []interface{}{"admin", "init", []int{0, 3, 225}, []string{"github.com/rhymen/go-whatsapp", "go-whatsapp"}, session.ClientId, true}
+	init := []interface{}{"admin", "init", []int{0, 3, 225}, []string{wac.longClientName, wac.shortClientName}, session.ClientId, true}
 	initChan, err := wac.write(init)
 	if err != nil {
 		wac.session = nil
@@ -259,10 +331,14 @@ func (wac *Conn) RestoreSession(session Session) (Session, error) {
 		return Session{}, fmt.Errorf("restore session login timed out")
 	}
 
+	info := connResp[1].(map[string]interface{})
+
+	wac.Info = newInfoFromReq(info)
+
 	//set new tokens
-	session.ClientToken = connResp[1].(map[string]interface{})["clientToken"].(string)
-	session.ServerToken = connResp[1].(map[string]interface{})["serverToken"].(string)
-	session.Wid = connResp[1].(map[string]interface{})["wid"].(string)
+	session.ClientToken = info["clientToken"].(string)
+	session.ServerToken = info["serverToken"].(string)
+	session.Wid = info["wid"].(string)
 
 	return *wac.session, nil
 }

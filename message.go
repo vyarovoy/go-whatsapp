@@ -14,14 +14,13 @@ import (
 	"github.com/Rhymen/go-whatsapp/binary/proto"
 )
 
-type messageType string
+type MediaType string
 
 const (
-	image    messageType = "WhatsApp Image Keys"
-	video    messageType = "WhatsApp Video Keys"
-	audio    messageType = "WhatsApp Audio Keys"
-	document messageType = "WhatsApp Document Keys"
-	location messageType = "WhatsApp Location Keys"
+	MediaImage    MediaType = "WhatsApp Image Keys"
+	MediaVideo    MediaType = "WhatsApp Video Keys"
+	MediaAudio    MediaType = "WhatsApp Audio Keys"
+	MediaDocument MediaType = "WhatsApp Document Keys"
 )
 
 func (wac *Conn) Send(msg interface{}) error {
@@ -29,37 +28,40 @@ func (wac *Conn) Send(msg interface{}) error {
 	var ch <-chan string
 
 	switch m := msg.(type) {
+	case *proto.WebMessageInfo:
+		ch, err = wac.sendProto(m)
 	case TextMessage:
 		ch, err = wac.sendProto(getTextProto(m))
 	case ImageMessage:
-		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.upload(m.Content, image)
+		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.Upload(m.Content, MediaImage)
 		if err != nil {
-			return fmt.Errorf("upload failed: %v", err)
+			return fmt.Errorf("image upload failed: %v", err)
 		}
 		ch, err = wac.sendProto(getImageProto(m))
 	case VideoMessage:
-		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.upload(m.Content, video)
+		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.Upload(m.Content, MediaVideo)
 		if err != nil {
-			return fmt.Errorf("upload failed: %v", err)
+			return fmt.Errorf("video upload failed: %v", err)
 		}
 		ch, err = wac.sendProto(getVideoProto(m))
 	case DocumentMessage:
-		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.upload(m.Content, document)
+		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.Upload(m.Content, MediaDocument)
 		if err != nil {
-			return fmt.Errorf("upload failed: %v", err)
+			return fmt.Errorf("document upload failed: %v", err)
 		}
 		ch, err = wac.sendProto(getDocumentProto(m))
 	case AudioMessage:
-		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.upload(m.Content, audio)
+		m.url, m.mediaKey, m.fileEncSha256, m.fileSha256, m.fileLength, err = wac.Upload(m.Content, MediaAudio)
 		if err != nil {
-			return fmt.Errorf("upload failed: %v", err)
+			return fmt.Errorf("audio upload failed: %v", err)
 		}
 		ch, err = wac.sendProto(getAudioProto(m))
 	default:
-		return fmt.Errorf("cannot match type %T, use messagetypes declared in the package", msg)
+		return fmt.Errorf("cannot match type %T, use message types declared in the package", msg)
 	}
+
 	if err != nil {
-		return fmt.Errorf("error sending message:%v", err)
+		return fmt.Errorf("could not send proto: %v", err)
 	}
 
 	select {
@@ -98,25 +100,43 @@ func init() {
 MessageInfo contains general message information. It is part of every of every message type.
 */
 type MessageInfo struct {
-	Id        string
-	RemoteJid string
-	FromMe    bool
-	Timestamp uint64
-	PushName  string
+	Id              string
+	RemoteJid       string
+	SenderJid       string
+	FromMe          bool
+	Timestamp       uint64
+	PushName        string
+	Status          MessageStatus
+	QuotedMessageID string
+
+	Source *proto.WebMessageInfo
 }
+
+type MessageStatus int
+
+const (
+	Error       MessageStatus = 0
+	Pending                   = 1
+	ServerAck                 = 2
+	DeliveryAck               = 3
+	Read                      = 4
+	Played                    = 5
+)
 
 func getMessageInfo(msg *proto.WebMessageInfo) MessageInfo {
 	return MessageInfo{
 		Id:        msg.GetKey().GetId(),
 		RemoteJid: msg.GetKey().GetRemoteJid(),
+		SenderJid: msg.GetKey().GetParticipant(),
 		FromMe:    msg.GetKey().GetFromMe(),
 		Timestamp: msg.GetMessageTimestamp(),
+		Status:    MessageStatus(msg.GetStatus()),
 		PushName:  msg.GetPushName(),
+		Source:    msg,
 	}
 }
 
 func getInfoProto(info *MessageInfo) *proto.WebMessageInfo {
-	status := proto.WebMessageInfo_STATUS(1)
 	if info.Id == "" || len(info.Id) < 2 {
 		b := make([]byte, 10)
 		rand.Read(b)
@@ -126,6 +146,8 @@ func getInfoProto(info *MessageInfo) *proto.WebMessageInfo {
 		info.Timestamp = uint64(time.Now().Unix())
 	}
 	info.FromMe = true
+
+	status := proto.WebMessageInfo_STATUS(info.Status)
 
 	return &proto.WebMessageInfo{
 		Key: &proto.MessageKey{
@@ -181,10 +203,14 @@ type TextMessage struct {
 }
 
 func getTextMessage(msg *proto.WebMessageInfo) TextMessage {
-	return TextMessage{
-		Info: getMessageInfo(msg),
-		Text: msg.GetMessage().GetConversation(),
+	text := TextMessage{Info: getMessageInfo(msg)}
+	if m := msg.GetMessage().GetExtendedTextMessage(); m != nil {
+		text.Text = m.GetText()
+		text.Info.QuotedMessageID = m.GetContextInfo().GetStanzaId()
+	} else {
+		text.Text = msg.GetMessage().GetConversation()
 	}
+	return text
 }
 
 func getTextProto(msg TextMessage) *proto.WebMessageInfo {
@@ -248,7 +274,7 @@ func getImageProto(msg ImageMessage) *proto.WebMessageInfo {
 Download is the function to retrieve media data. The media gets downloaded, validated and returned.
 */
 func (m *ImageMessage) Download() ([]byte, error) {
-	return download(m.url, m.mediaKey, image, int(m.fileLength))
+	return Download(m.url, m.mediaKey, MediaImage, int(m.fileLength))
 }
 
 /*
@@ -307,7 +333,7 @@ func getVideoProto(msg VideoMessage) *proto.WebMessageInfo {
 Download is the function to retrieve media data. The media gets downloaded, validated and returned.
 */
 func (m *VideoMessage) Download() ([]byte, error) {
-	return download(m.url, m.mediaKey, video, int(m.fileLength))
+	return Download(m.url, m.mediaKey, MediaVideo, int(m.fileLength))
 }
 
 /*
@@ -360,7 +386,7 @@ func getAudioProto(msg AudioMessage) *proto.WebMessageInfo {
 Download is the function to retrieve media data. The media gets downloaded, validated and returned.
 */
 func (m *AudioMessage) Download() ([]byte, error) {
-	return download(m.url, m.mediaKey, audio, int(m.fileLength))
+	return Download(m.url, m.mediaKey, MediaAudio, int(m.fileLength))
 }
 
 /*
@@ -419,7 +445,7 @@ func getDocumentProto(msg DocumentMessage) *proto.WebMessageInfo {
 Download is the function to retrieve media data. The media gets downloaded, validated and returned.
 */
 func (m *DocumentMessage) Download() ([]byte, error) {
-	return download(m.url, m.mediaKey, document, int(m.fileLength))
+	return Download(m.url, m.mediaKey, MediaDocument, int(m.fileLength))
 }
 
 func parseProtoMessage(msg *proto.WebMessageInfo) interface{} {
@@ -440,8 +466,8 @@ func parseProtoMessage(msg *proto.WebMessageInfo) interface{} {
 	case msg.GetMessage().GetConversation() != "":
 		return getTextMessage(msg)
 
-	case msg.GetMessage().GetLocationMessage() != nil:
-		return getLocationMessage(msg)
+	case msg.GetMessage().GetExtendedTextMessage() != nil:
+		return getTextMessage(msg)
 
 	default:
 		//cannot match message

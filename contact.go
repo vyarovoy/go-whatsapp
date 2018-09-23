@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+type Presence string
+
+const (
+	PresenceAvailable   = "available"
+	PresenceUnavailable = "unavailable"
+	PresenceComposing   = "composing"
+)
+
 //TODO: filename? WhatsApp uses Store.Contacts for these functions
 //TODO: functions probably shouldn't return a string, maybe build a struct / return json
 //TODO: check for further queries
@@ -74,9 +82,9 @@ func (wac *Conn) LoadMessagesAfter(jid, messageId string, count int) (*binary.No
 	return wac.query("message", jid, messageId, "after", "true", "", count, 0)
 }
 
-func (wac *Conn) Acknowledge(jid string) (<-chan string, error) {
+func (wac *Conn) Presence(jid string, presence Presence) (<-chan string, error) {
 	ts := time.Now().Unix()
-	id := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
+	tag := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
 
 	n := binary.Node{
 		Description: "action",
@@ -87,12 +95,12 @@ func (wac *Conn) Acknowledge(jid string) (<-chan string, error) {
 		Content: []interface{}{binary.Node{
 			Description: "presence",
 			Attributes: map[string]string{
-				"type": "available",
+				"type": string(presence),
 			},
 		}},
 	}
 
-	return wac.writeBinary(n, group, ignore, id)
+	return wac.writeBinary(n, group, ignore, tag)
 }
 
 func (wac *Conn) Emoji() (*binary.Node, error) {
@@ -107,9 +115,33 @@ func (wac *Conn) Chats() (*binary.Node, error) {
 	return wac.query("chat", "", "", "", "", "", 0, 0)
 }
 
+func (wac *Conn) Read(jid, id string) (<-chan string, error) {
+	ts := time.Now().Unix()
+	tag := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
+
+	n := binary.Node{
+		Description: "action",
+		Attributes: map[string]string{
+			"type":  "set",
+			"epoch": strconv.Itoa(wac.msgCount),
+		},
+		Content: []interface{}{binary.Node{
+			Description: "read",
+			Attributes: map[string]string{
+				"count": "1",
+				"index": id,
+				"jid":   jid,
+				"owner": "false",
+			},
+		}},
+	}
+
+	return wac.writeBinary(n, group, ignore, tag)
+}
+
 func (wac *Conn) query(t, jid, messageId, kind, owner, search string, count, page int) (*binary.Node, error) {
 	ts := time.Now().Unix()
-	id := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
+	tag := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
 
 	n := binary.Node{
 		Description: "query",
@@ -147,7 +179,7 @@ func (wac *Conn) query(t, jid, messageId, kind, owner, search string, count, pag
 		n.Attributes["page"] = strconv.Itoa(page)
 	}
 
-	ch, err := wac.writeBinary(n, group, ignore, id)
+	ch, err := wac.writeBinary(n, group, ignore, tag)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +195,7 @@ func (wac *Conn) query(t, jid, messageId, kind, owner, search string, count, pag
 
 func (wac *Conn) setGroup(t, jid, subject string, participants []string) (<-chan string, error) {
 	ts := time.Now().Unix()
-	id := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
+	tag := fmt.Sprintf("%d.--%d", ts, wac.msgCount)
 
 	//TODO: get proto or improve encoder to handle []interface{}
 
@@ -173,7 +205,7 @@ func (wac *Conn) setGroup(t, jid, subject string, participants []string) (<-chan
 		Description: "group",
 		Attributes: map[string]string{
 			"author": wac.session.Wid,
-			"id":     id,
+			"id":     tag,
 			"type":   t,
 		},
 		Content: p,
@@ -196,7 +228,7 @@ func (wac *Conn) setGroup(t, jid, subject string, participants []string) (<-chan
 		Content: []interface{}{g},
 	}
 
-	return wac.writeBinary(n, group, ignore, id)
+	return wac.writeBinary(n, group, ignore, tag)
 }
 
 func buildParticipantNodes(participants []string) []binary.Node {
